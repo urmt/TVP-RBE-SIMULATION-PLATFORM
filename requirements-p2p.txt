@@ -1,0 +1,22 @@
+# TVP-RBE-SIMULATION-PLATFORM Dependencies
+# Core dependencies for P2P networking and simulation
+
+# Testing framework
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+
+# Async support
+asyncio-mqtt>=0.13.0
+
+# Data handling
+numpy>=1.24.0
+
+# CLI and UI
+argparse
+
+# Database
+# sqlite3 is included in Python standard library
+
+# Networking
+# asyncio is included in Python standard library
