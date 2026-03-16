@@ -1,0 +1,10 @@
+{
+  "phases": {
+    "phase_1": "PASS",
+    "phase_2": "PASS",
+    "phase_3": "FAIL: No module named 'hub.cybernation_hub'",
+    "phase_4": "FAIL: No module named 'connectors.iot_sensors'",
+    "phase_5": "FAIL: No module named 'visualization.circular_city'"
+  },
+  "overall": "FAIL"
+}
