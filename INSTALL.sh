@@ -1,179 +1,152 @@
 #!/bin/bash
 # TVP-RBE-SIMULATION-PLATFORM Installation Script
-# Automates environment setup, dependency installation, and database initialization
+# Resource-Based Economy TVP Simulation Platform
+# https://github.com/urmt/TVP-RBE-SIMULATION-PLATFORM
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_NAME="TVP-RBE-SIMULATION-PLATFORM"
-DB_FILE="rbe_resources.db"
-
 echo "=========================================="
-echo "  $PROJECT_NAME Installer"
+echo "TVP-RBE-SIMULATION-PLATFORM Installer"
+echo "Resource-Based Economy Simulation Platform"
 echo "=========================================="
 echo ""
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
 # Check Python version
-echo "[1/5] Checking Python version..."
-if command -v /usr/bin/python3 &> /dev/null; then
-    PYTHON_VERSION=$(/usr/bin/python3 --version 2>&1 | awk '{print $2}')
-    echo "  Found Python $PYTHON_VERSION"
-else
-    echo "  ERROR: Python 3 not found. Please install Python 3.8 or higher."
+echo "[1/6] Checking Python version..."
+PYTHON_VERSION=$(/usr/bin/python3 --version 2>&1 | awk '{print $2}')
+REQUIRED_VERSION="3.8"
+
+if [ -z "$PYTHON_VERSION" ]; then
+    echo -e "${RED}Error: Python 3 is not installed${NC}"
     exit 1
 fi
 
+# Version comparison
+if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]; then
+    echo -e "${RED}Error: Python $PYTHON_VERSION is too old. Python $REQUIRED_VERSION+ required.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Python $PYTHON_VERSION detected${NC}"
+
+# Check for pip
+echo ""
+echo "[2/6] Checking pip..."
+if ! command -v pip3 &> /dev/null; then
+    echo -e "${YELLOW}Warning: pip3 not found. Attempting to install...${NC}"
+    /usr/bin/python3 -m ensurepip --upgrade 2>/dev/null || {
+        echo -e "${RED}Error: Could not install pip. Please install manually.${NC}"
+        exit 1
+    }
+fi
+echo -e "${GREEN}✓ pip is available${NC}"
+
 # Create virtual environment
 echo ""
-echo "[2/5] Setting up virtual environment..."
-VENV_DIR="$SCRIPT_DIR/venv"
-if [ -d "$VENV_DIR" ]; then
-    echo "  Virtual environment already exists"
+echo "[3/6] Setting up virtual environment..."
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_DIR"
+
+if [ -d "venv" ]; then
+    echo -e "${YELLOW}Virtual environment already exists. Skipping creation.${NC}"
 else
-    /usr/bin/python3 -m venv "$VENV_DIR"
-    echo "  Created virtual environment at $VENV_DIR"
+    /usr/bin/python3 -m venv venv
+    echo -e "${GREEN}✓ Virtual environment created${NC}"
 fi
 
 # Activate virtual environment
-echo "  Activating virtual environment..."
-source "$VENV_DIR/bin/activate"
+echo ""
+echo "[4/6] Activating virtual environment..."
+source venv/bin/activate
+echo -e "${GREEN}✓ Virtual environment activated${NC}"
 
 # Install dependencies
 echo ""
-echo "[3/5] Installing Python dependencies..."
+echo "[5/6] Installing dependencies..."
 
-# Install from requirements files
-if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-    pip install -q -r "$SCRIPT_DIR/requirements.txt"
-    echo "  Installed from requirements.txt"
+# Create requirements.txt if it doesn't exist
+if [ ! -f "requirements.txt" ]; then
+    cat > requirements.txt << 'REQEOF'
+# TVP-RBE-SIMULATION-PLATFORM Dependencies
+# Core dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# Optional UI dependencies (for web interface)
+streamlit>=1.28.0
+
+# Data processing
+numpy>=1.24.0
+
+# Networking (for P2P)
+asyncio-mqtt>=0.16.0
+REQEOF
+    echo -e "${GREEN}✓ Created requirements.txt${NC}"
 fi
 
-if [ -f "$SCRIPT_DIR/requirements-p2p.txt" ]; then
-    pip install -q -r "$SCRIPT_DIR/requirements-p2p.txt"
-    echo "  Installed from requirements-p2p.txt"
-fi
+# Install Python packages
+pip install --upgrade pip
+pip install -r requirements.txt
 
-echo "  Core dependencies installed"
+echo -e "${GREEN}✓ Dependencies installed${NC}"
 
-# Initialize database
+# Initialize databases
 echo ""
-echo "[4/5] Initializing SQLite database..."
-DB_PATH="$SCRIPT_DIR/$DB_FILE"
+echo "[6/6] Initializing databases..."
 
-cd "$SCRIPT_DIR"
 /usr/bin/python3 << 'PYEOF'
-import sqlite3
-import os
+import sys
+sys.path.insert(0, '.')
+from tracker.database import ResourceDatabase
+from hub.cybernation_hub import CybernationHub
 
-db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'rbe_resources.db')
+# Initialize resource database
+db = ResourceDatabase("rbe_resources.db")
+print("✓ Resource database initialized")
 
-conn = sqlite3.connect(db_path)
-cursor = conn.cursor()
+# Initialize cybernation hub tables
+hub = CybernationHub("rbe_resources.db")
+print("✓ Cybernation hub tables initialized")
 
-# Create resources table
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS resources (
-        resource_id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        resource_type TEXT NOT NULL,
-        unit TEXT NOT NULL,
-        current_quantity REAL NOT NULL DEFAULT 0.0,
-        metadata TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""")
+# Add sample resources if none exist
+resources = db.get_all_resources()
+if not resources:
+    db.add_resource("energy-001", "Solar Array Alpha", "ENERGY", "kWh", 10000.0)
+    db.add_resource("energy-002", "Wind Farm Beta", "ENERGY", "kWh", 15000.0)
+    db.add_resource("water-001", "Central Reservoir", "WATER", "m³", 50000.0)
+    db.add_resource("water-002", "Treatment Plant", "WATER", "m³", 20000.0)
+    db.add_resource("material-001", "Steel Stock", "MATERIAL", "kg", 5000.0)
+    db.add_resource("material-002", "Component Storage", "MATERIAL", "unit", 1000.0)
+    print("✓ Sample resources added")
+else:
+    print(f"✓ {len(resources)} existing resources found")
 
-# Create allocations table
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS allocations (
-        allocation_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        resource_id TEXT NOT NULL,
-        allocated_quantity REAL NOT NULL,
-        allocated_to TEXT,
-        purpose TEXT,
-        allocated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (resource_id) REFERENCES resources(resource_id)
-    )
-""")
-
-# Create feeds table
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS feeds (
-        feed_id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        source_type TEXT NOT NULL,
-        config TEXT,
-        is_active BOOLEAN DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""")
-
-# Create history table
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS history (
-        history_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        resource_id TEXT NOT NULL,
-        quantity REAL NOT NULL,
-        recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (resource_id) REFERENCES resources(resource_id)
-    )
-""")
-
-# Create hub_decisions table
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS hub_decisions (
-        decision_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        resource_id TEXT NOT NULL,
-        requested_amount REAL NOT NULL,
-        approved_amount REAL NOT NULL,
-        priority TEXT NOT NULL,
-        sustainability_score REAL,
-        equity_score REAL,
-        decision_reason TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""")
-
-# Create scarcity_scenarios table
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS scarcity_scenarios (
-        scenario_id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        resource_constraints TEXT,
-        active BOOLEAN DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-""")
-
-conn.commit()
-conn.close()
-print("Database initialized successfully")
+print("\nDatabase initialization complete!")
 PYEOF
 
-echo "  Database initialized at $DB_PATH"
-
-# Run tests
-echo ""
-echo "[5/5] Running integration tests..."
-cd "$SCRIPT_DIR"
-/usr/bin/python3 -m pytest tests/ -q --tb=short 2>&1 | tail -20
-
 echo ""
 echo "=========================================="
-echo "  Installation Complete!"
+echo -e "${GREEN}Installation Complete!${NC}"
 echo "=========================================="
 echo ""
-echo "Project Location: $SCRIPT_DIR"
-echo "Database: $DB_PATH"
-echo "Virtual Environment: $VENV_DIR"
+echo "To activate the environment in the future, run:"
+echo "  source venv/bin/activate"
 echo ""
-echo "Quick Start:"
-echo "  1. Activate environment: source venv/bin/activate"
-echo "  2. Run CLI: /usr/bin/python3 -m tracker.cli --help"
-echo "  3. Run tests: /usr/bin/python3 -m pytest tests/"
+echo "To run tests:"
+echo "  /usr/bin/python3 -m pytest tests/ -v"
 echo ""
-echo "For P2P mode:"
-echo "  /usr/bin/python3 -m rbe.p2p.network"
+echo "To use the CLI:"
+echo "  /usr/bin/python3 -m tracker.cli --help"
+echo ""
+echo "To start the UI (if streamlit is installed):"
+echo "  streamlit run ui/main.py"
+echo ""
+echo "Project: TVP-RBE-SIMULATION-PLATFORM"
+echo "GitHub: https://github.com/urmt/TVP-RBE-SIMULATION-PLATFORM"
 echo ""
